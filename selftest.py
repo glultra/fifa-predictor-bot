@@ -57,7 +57,12 @@ now = sample.kickoff_utc - dt.timedelta(hours=10)
 poll = bot.build_poll(sample, now)
 ans = [a.text for a in poll.answers]
 check("question mentions both teams", sample.team1 in poll.question and sample.team2 in poll.question)
-check("exactly 3 answers (Team1 / Draw / Team2)", ans == [sample.team1[:55], "Draw", sample.team2[:55]])
+check("3 answers: flagged Team1 / Draw / flagged Team2",
+      len(ans) == 3
+      and sample.team1 in ans[0] and ans[0] != sample.team1   # flag prefix present
+      and ans[1].endswith("Draw")
+      and sample.team2 in ans[2] and ans[2] != sample.team2)
+check("every team has a flag mapped", all(t in bot.FLAGS for t in [sample.team1, sample.team2]))
 check("poll closes at kick-off (~10h)", abs(poll.duration - dt.timedelta(hours=10)) < dt.timedelta(minutes=1))
 # Duration clamping
 near = sample.kickoff_utc - dt.timedelta(minutes=20)

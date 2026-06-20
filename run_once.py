@@ -1,16 +1,9 @@
 """
 run_once.py — Single-shot poll poster for GitHub Actions (cron).
 
-Unlike bot.py (which runs forever), this wakes up, posts any polls that are due
-right now, saves which ones it posted, and exits. GitHub Actions runs it on a
-schedule (e.g. every 15 minutes). Because polls go out hours before kick-off,
-the exact minute doesn't matter — any run inside the lead window posts the poll.
-
-Config comes from environment variables (set as GitHub Actions *secrets*):
-  DISCORD_TOKEN   (required)
-  CHANNEL_ID      (required)
-  LEAD_HOURS, CLOSE_AT_KICKOFF, POLL_HOURS, SKIP_PLACEHOLDERS  (optional)
-Set DRY_RUN=1 to print what *would* be posted without connecting to Discord.
+Wakes up, posts any polls due right now (Team 1 / Draw / Team 2 with country
+flags), saves which ones it posted, and exits. Scheduled by
+.github/workflows/poll.yml. Set DRY_RUN=1 to preview without connecting.
 """
 from __future__ import annotations
 
@@ -41,6 +34,38 @@ MIN_POLL = dt.timedelta(hours=1)
 MAX_POLL = dt.timedelta(days=32)
 
 
+# --- Country flags --------------------------------------------------------- #
+def _flag(cc: str) -> str:
+    """2-letter ISO code -> regional-indicator flag emoji (e.g. 'DE' -> German flag)."""
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in cc.upper())
+
+
+def _subdiv(tag: str) -> str:
+    """Subdivision flag (e.g. 'gbeng' -> England) via tag sequence."""
+    return "\U0001F3F4" + "".join(chr(0xE0000 + ord(c)) for c in tag) + "\U000E007F"
+
+
+_ISO = {
+    "Algeria": "DZ", "Argentina": "AR", "Australia": "AU", "Austria": "AT", "Belgium": "BE",
+    "Bosnia & Herzegovina": "BA", "Brazil": "BR", "Canada": "CA", "Cape Verde": "CV",
+    "Colombia": "CO", "Croatia": "HR", "Curaçao": "CW", "Czech Republic": "CZ", "DR Congo": "CD",
+    "Ecuador": "EC", "Egypt": "EG", "France": "FR", "Germany": "DE", "Ghana": "GH", "Haiti": "HT",
+    "Iran": "IR", "Iraq": "IQ", "Ivory Coast": "CI", "Japan": "JP", "Jordan": "JO", "Mexico": "MX",
+    "Morocco": "MA", "Netherlands": "NL", "New Zealand": "NZ", "Norway": "NO", "Panama": "PA",
+    "Paraguay": "PY", "Portugal": "PT", "Qatar": "QA", "Saudi Arabia": "SA", "Senegal": "SN",
+    "South Africa": "ZA", "South Korea": "KR", "Spain": "ES", "Sweden": "SE", "Switzerland": "CH",
+    "Tunisia": "TN", "Turkey": "TR", "USA": "US", "Uruguay": "UY", "Uzbekistan": "UZ",
+}
+FLAGS = {name: _flag(cc) for name, cc in _ISO.items()}
+FLAGS["England"] = _subdiv("gbeng")
+FLAGS["Scotland"] = _subdiv("gbsct")
+
+
+def label(team: str) -> str:
+    """'Germany' -> 'flag Germany' (falls back to a soccer ball if unmapped)."""
+    return (FLAGS.get(team, "\u26BD") + " " + team)[:55]
+
+
 def load_state() -> set:
     p = Path(STATE_FILE)
     if p.exists():
@@ -69,20 +94,24 @@ def build_poll(discord, m: fx.Match, now: dt.datetime):
     duration = (m.kickoff_utc - now) if CLOSE_AT_KICKOFF else dt.timedelta(hours=POLL_HOURS)
     duration = max(MIN_POLL, min(duration, MAX_POLL))
     poll = discord.Poll(question=f"{m.team1} vs {m.team2} — who wins?"[:300], duration=duration)
-    poll.add_answer(text=m.team1[:55], emoji="\U0001F170\uFE0F")
-    poll.add_answer(text="Draw", emoji="\U0001F91D")
-    poll.add_answer(text=m.team2[:55], emoji="\U0001F171\uFE0F")
+    poll.add_answer(text=label(m.team1))
+    poll.add_answer(text="\U0001F91D Draw")
+    poll.add_answer(text=label(m.team2))
     return poll
 
 
 def build_context_line(m: fx.Match) -> str:
+    f1 = FLAGS.get(m.team1, "")
+    f2 = FLAGS.get(m.team2, "")
+    matchup = (f1 + " " + m.team1 + "  vs  " + f2 + " " + m.team2).strip()
     bits = ["\U0001F3C6 **" + m.round + "**"]
     if m.group:
         bits.append(m.group)
     if m.ground:
         bits.append("\U0001F4CD " + m.ground)
     ko = m.kickoff_unix
-    return " \u00B7 ".join(bits) + "\n\U0001F550 Kick-off: <t:" + str(ko) + ":F> (<t:" + str(ko) + ":R>)\nCast your vote \U0001F447"
+    return ("**" + matchup + "**\n" + " \u00B7 ".join(bits)
+            + "\n\U0001F550 Kick-off: <t:" + str(ko) + ":F> (<t:" + str(ko) + ":R>)\nCast your vote \U0001F447")
 
 
 def select(matches, posted, now, lead):
@@ -116,7 +145,8 @@ async def main() -> None:
         print("[DRY RUN] now (UTC) = " + now.strftime("%Y-%m-%d %H:%M"))
         print("[DRY RUN] would post " + str(len(to_post)) + " poll(s):")
         for m in to_post:
-            print("   - " + m.team1 + " vs " + m.team2 + "  (kick-off " + m.kickoff_utc.strftime("%Y-%m-%d %H:%M") + " UTC)")
+            print("   - " + label(m.team1) + " vs " + label(m.team2)
+                  + "  (kick-off " + m.kickoff_utc.strftime("%Y-%m-%d %H:%M") + " UTC)")
         print("[DRY RUN] " + str(len(expired)) + " past match(es) marked done.")
         if changed:
             save_state(posted)

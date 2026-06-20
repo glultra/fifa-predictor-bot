@@ -96,6 +96,34 @@ def reload_matches() -> None:
     log.info("Loaded %d fixtures (%d with confirmed teams).", len(matches), real)
 
 
+def _flag(cc: str) -> str:
+    return "".join(chr(0x1F1E6 + ord(c) - ord("A")) for c in cc.upper())
+
+
+def _subdiv(tag: str) -> str:
+    return "\U0001F3F4" + "".join(chr(0xE0000 + ord(c)) for c in tag) + "\U000E007F"
+
+
+_ISO = {
+    "Algeria": "DZ", "Argentina": "AR", "Australia": "AU", "Austria": "AT", "Belgium": "BE",
+    "Bosnia & Herzegovina": "BA", "Brazil": "BR", "Canada": "CA", "Cape Verde": "CV",
+    "Colombia": "CO", "Croatia": "HR", "Curaçao": "CW", "Czech Republic": "CZ", "DR Congo": "CD",
+    "Ecuador": "EC", "Egypt": "EG", "France": "FR", "Germany": "DE", "Ghana": "GH", "Haiti": "HT",
+    "Iran": "IR", "Iraq": "IQ", "Ivory Coast": "CI", "Japan": "JP", "Jordan": "JO", "Mexico": "MX",
+    "Morocco": "MA", "Netherlands": "NL", "New Zealand": "NZ", "Norway": "NO", "Panama": "PA",
+    "Paraguay": "PY", "Portugal": "PT", "Qatar": "QA", "Saudi Arabia": "SA", "Senegal": "SN",
+    "South Africa": "ZA", "South Korea": "KR", "Spain": "ES", "Sweden": "SE", "Switzerland": "CH",
+    "Tunisia": "TN", "Turkey": "TR", "USA": "US", "Uruguay": "UY", "Uzbekistan": "UZ",
+}
+FLAGS = {name: _flag(cc) for name, cc in _ISO.items()}
+FLAGS["England"] = _subdiv("gbeng")
+FLAGS["Scotland"] = _subdiv("gbsct")
+
+
+def label(team: str) -> str:
+    return (FLAGS.get(team, "\u26BD") + " " + team)[:55]
+
+
 def build_poll(m: fx.Match, now: dt.datetime) -> discord.Poll:
     if CLOSE_AT_KICKOFF:
         duration = m.kickoff_utc - now
@@ -106,13 +134,16 @@ def build_poll(m: fx.Match, now: dt.datetime) -> discord.Poll:
 
     question = f"{m.team1} vs {m.team2} — who wins?"[:300]
     poll = discord.Poll(question=question, duration=duration)
-    poll.add_answer(text=m.team1[:55], emoji="🅰️")
-    poll.add_answer(text="Draw", emoji="🤝")
-    poll.add_answer(text=m.team2[:55], emoji="🅱️")
+    poll.add_answer(text=label(m.team1))
+    poll.add_answer(text="\U0001F91D Draw")
+    poll.add_answer(text=label(m.team2))
     return poll
 
 
 def build_context_line(m: fx.Match) -> str:
+    f1 = FLAGS.get(m.team1, "")
+    f2 = FLAGS.get(m.team2, "")
+    matchup = f"{f1} {m.team1}  vs  {f2} {m.team2}".strip()
     bits = [f"🏆 **{m.round}**"]
     if m.group:
         bits.append(m.group)
@@ -121,7 +152,7 @@ def build_context_line(m: fx.Match) -> str:
     header = " · ".join(bits)
     ko = m.kickoff_unix
     # <t:UNIX:F> renders in each viewer's own timezone; :R is a "in 5 hours" countdown.
-    return f"{header}\n🕐 Kick-off: <t:{ko}:F> (<t:{ko}:R>)\nCast your vote 👇"
+    return f"**{matchup}**\n{header}\n🕐 Kick-off: <t:{ko}:F> (<t:{ko}:R>)\nCast your vote 👇"
 
 
 def classify(m: fx.Match, now: dt.datetime, lead: dt.timedelta) -> str:
