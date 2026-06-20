@@ -93,10 +93,10 @@ def classify(m: fx.Match, now: dt.datetime, lead: dt.timedelta) -> str:
 def build_poll(discord, m: fx.Match, now: dt.datetime):
     duration = (m.kickoff_utc - now) if CLOSE_AT_KICKOFF else dt.timedelta(hours=POLL_HOURS)
     duration = max(MIN_POLL, min(duration, MAX_POLL))
-    poll = discord.Poll(question=f"{m.team1} vs {m.team2} — who wins?"[:300], duration=duration)
-    poll.add_answer(text=m.team1[:55], emoji=FLAGS.get(m.team1, "\u26BD"))
-    poll.add_answer(text="Draw", emoji="\U0001F91D")
-    poll.add_answer(text=m.team2[:55], emoji=FLAGS.get(m.team2, "\u26BD"))
+    poll = discord.Poll(question="Who wins? \U0001F3C6", duration=duration)
+    poll.add_answer(text=m.team1[:55], emoji="\U0001F534")   # red circle
+    poll.add_answer(text="Draw", emoji="\U0001F91D")          # handshake
+    poll.add_answer(text=m.team2[:55], emoji="\U0001F535")   # blue circle
     return poll
 
 
@@ -111,7 +111,7 @@ def build_context_line(m: fx.Match) -> str:
         bits.append("\U0001F4CD " + m.ground)
     ko = m.kickoff_unix
     return ("**" + matchup + "**\n" + " \u00B7 ".join(bits)
-            + "\n\U0001F550 Kick-off: <t:" + str(ko) + ":F> (<t:" + str(ko) + ":R>)\nCast your vote \U0001F447")
+            + "\n\U0001F550 Kick-off: <t:" + str(ko) + ":F> (<t:" + str(ko) + ":R>)")
 
 
 def select(matches, posted, now, lead):
