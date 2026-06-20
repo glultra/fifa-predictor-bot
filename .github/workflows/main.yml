@@ -1,17 +1,14 @@
 name: World Cup Poll Bot
 
-# Runs on a schedule and posts any polls that are due right now.
-# GitHub may delay scheduled runs by a few minutes under load — that's fine,
-# because polls go out hours before kick-off, so any run in the window works.
 on:
   schedule:
-    - cron: "*/15 * * * *"      # every 15 minutes (times are UTC)
-  workflow_dispatch: {}          # adds a "Run workflow" button for manual testing
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
 
 permissions:
-  contents: write                # allows committing posted.json back to the repo
+  contents: write
 
-concurrency:                     # never let two runs overlap (protects the state file)
+concurrency:
   group: wc-poll-bot
   cancel-in-progress: false
 
@@ -34,9 +31,6 @@ jobs:
         env:
           DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
           CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
-          # Optional: uncomment to override defaults
-          # LEAD_HOURS: "12"
-          # CLOSE_AT_KICKOFF: "true"
         run: python run_once.py
 
       - name: Save state (commit posted.json if it changed)
@@ -46,9 +40,8 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add posted.json
             git commit -m "Update poll state"
-            # pull anything that landed since checkout, then push (retry once)
-            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
-            git push origin "HEAD:${GITHUB_REF_NAME}" || (git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}")
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
           else
             echo "No state change to commit."
           fi
