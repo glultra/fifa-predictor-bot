@@ -56,12 +56,12 @@ sample = real[0]
 now = sample.kickoff_utc - dt.timedelta(hours=10)
 poll = bot.build_poll(sample, now)
 ans = [a.text for a in poll.answers]
+emojis = [getattr(a.emoji, "name", None) for a in poll.answers]
 check("question mentions both teams", sample.team1 in poll.question and sample.team2 in poll.question)
-check("3 answers: flagged Team1 / Draw / flagged Team2",
-      len(ans) == 3
-      and sample.team1 in ans[0] and ans[0] != sample.team1   # flag prefix present
-      and ans[1].endswith("Draw")
-      and sample.team2 in ans[2] and ans[2] != sample.team2)
+check("3 answers, plain text Team1 / Draw / Team2",
+      ans == [sample.team1[:55], "Draw", sample.team2[:55]])
+check("flags applied as answer emoji icons",
+      emojis[0] == bot.FLAGS[sample.team1] and emojis[2] == bot.FLAGS[sample.team2])
 check("every team has a flag mapped", all(t in bot.FLAGS for t in [sample.team1, sample.team2]))
 check("poll closes at kick-off (~10h)", abs(poll.duration - dt.timedelta(hours=10)) < dt.timedelta(minutes=1))
 # Duration clamping

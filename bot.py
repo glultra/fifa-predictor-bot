@@ -134,9 +134,9 @@ def build_poll(m: fx.Match, now: dt.datetime) -> discord.Poll:
 
     question = f"{m.team1} vs {m.team2} — who wins?"[:300]
     poll = discord.Poll(question=question, duration=duration)
-    poll.add_answer(text=label(m.team1))
-    poll.add_answer(text="\U0001F91D Draw")
-    poll.add_answer(text=label(m.team2))
+    poll.add_answer(text=m.team1[:55], emoji=FLAGS.get(m.team1, "\u26BD"))
+    poll.add_answer(text="Draw", emoji="\U0001F91D")
+    poll.add_answer(text=m.team2[:55], emoji=FLAGS.get(m.team2, "\u26BD"))
     return poll
 
 
