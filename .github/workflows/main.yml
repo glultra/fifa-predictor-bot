@@ -1,0 +1,54 @@
+name: World Cup Poll Bot
+
+# Runs on a schedule and posts any polls that are due right now.
+# GitHub may delay scheduled runs by a few minutes under load — that's fine,
+# because polls go out hours before kick-off, so any run in the window works.
+on:
+  schedule:
+    - cron: "*/15 * * * *"      # every 15 minutes (times are UTC)
+  workflow_dispatch: {}          # adds a "Run workflow" button for manual testing
+
+permissions:
+  contents: write                # allows committing posted.json back to the repo
+
+concurrency:                     # never let two runs overlap (protects the state file)
+  group: wc-poll-bot
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Post any due polls
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+          # Optional: uncomment to override defaults
+          # LEAD_HOURS: "12"
+          # CLOSE_AT_KICKOFF: "true"
+        run: python run_once.py
+
+      - name: Save state (commit posted.json if it changed)
+        run: |
+          if [ -n "$(git status --porcelain posted.json)" ]; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add posted.json
+            git commit -m "Update poll state"
+            # pull anything that landed since checkout, then push (retry once)
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}" || true
+            git push origin "HEAD:${GITHUB_REF_NAME}" || (git pull --rebase --autostash origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}")
+          else
+            echo "No state change to commit."
+          fi
