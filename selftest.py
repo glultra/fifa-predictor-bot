@@ -57,7 +57,7 @@ now = sample.kickoff_utc - dt.timedelta(hours=10)
 poll = bot.build_poll(sample, now)
 ans = [a.text for a in poll.answers]
 emojis = [getattr(a.emoji, "name", None) for a in poll.answers]
-check("question mentions both teams", sample.team1 in poll.question and sample.team2 in poll.question)
+check("poll has a short title", len(poll.question) > 0 and sample.team1 not in poll.question)
 check("3 answers, plain text Team1 / Draw / Team2",
       ans == [sample.team1[:55], "Draw", sample.team2[:55]])
 check("flags applied as answer emoji icons",
@@ -77,6 +77,11 @@ after_kickoff = m.kickoff_utc + dt.timedelta(minutes=5)
 check("too early -> wait", bot.classify(m, before_window, lead) == "wait")
 check("inside lead window -> post", bot.classify(m, inside_window, lead) == "post")
 check("after kick-off -> expire", bot.classify(m, after_kickoff, lead) == "expire")
+too_close = m.kickoff_utc - dt.timedelta(minutes=30)   # inside the 60-min cutoff
+check("less than 60 min before kick-off -> expire (skipped)",
+      bot.classify(m, too_close, lead) == "expire")
+just_enough = m.kickoff_utc - dt.timedelta(minutes=65)  # safely outside cutoff
+check("65 min before kick-off -> post", bot.classify(m, just_enough, lead) == "post")
 
 placeholder_match = next((x for x in ms if not x.is_real), None)
 if placeholder_match:
@@ -100,6 +105,28 @@ while clock <= end:
 check("every confirmed-team match would post once", len(fired) == len(real))
 print(f"     -> {len(fired)} polls would be posted for currently-known teams "
       f"(knockout matches post later, after refresh fills the teams in).")
+
+print("\n[7] Prediction scoring + leaderboard")
+import run_once as rq
+check("winner_from_ft [2,0]->team1", rq.winner_from_ft([2, 0]) == "team1")
+check("winner_from_ft [1,1]->draw", rq.winner_from_ft([1, 1]) == "draw")
+check("winner_from_ft [0,3]->team2", rq.winner_from_ft([0, 3]) == "team2")
+check("winner_from_ft missing->None", rq.winner_from_ft(None) is None)
+res = rq.result_map(raw)
+finished = [s for s, w in res.items() if w is not None]
+check("finished matches detected from results", len(finished) > 0)
+seqf = finished[0]
+mf = next(x for x in ms if x.seq == seqf)
+ct = rq.correct_text(mf, res[seqf])
+check("correct_text matches a poll answer", ct in [a.text for a in bot.build_poll(mf, mf.kickoff_utc).answers])
+st = {"polls": {str(seqf): 999}, "scored": [], "skip": [], "points": {}, "names": {}}
+_, _, score_now = rq.plan(ms, st, dt.datetime.now(dt.timezone.utc), lead, res)
+check("a finished posted match is scorable", seqf in score_now)
+st["scored"] = [seqf]
+_, _, score_again = rq.plan(ms, st, dt.datetime.now(dt.timezone.utc), lead, res)
+check("an already-scored match is not re-scored", seqf not in score_again)
+board = rq.render_leaderboard({"1": 3, "2": 1}, {"1": "Alice", "2": "Bob"})
+check("leaderboard lists players with points", "Alice" in board and "3" in board)
 
 print("\n" + ("ALL CHECKS PASSED " + PASS if errors == 0 else f"{errors} CHECK(S) FAILED {FAIL}"))
 raise SystemExit(1 if errors else 0)
